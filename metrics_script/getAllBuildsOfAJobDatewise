@@ -1,0 +1,111 @@
+def ji = Jenkins.instance
+
+String from = '1-MAY-2019'
+String to = '30-MAY-2019'
+Date fromDateTmp = Date.parse( 'dd-MMM-yyyy', from )
+Date toDateTmp = Date.parse( 'dd-MMM-yyyy', to )
+String fromDate = fromDateTmp.format( 'M-d-yyyy' )
+String toDate = toDateTmp.format( 'M-d-yyyy' )
+Integer totalBuilds = 0;
+Integer totalDevBuilds = 0;
+Integer successBuilds = 0;
+Integer failureBuilds = 0;
+Integer unstableBuilds = 0;
+
+def users = []
+def job_pattern = /pcc_angular_pipeline*/
+
+def matchedJobs = ji.items.findAll { job ->
+    job.name =~ job_pattern 
+}
+
+matchedJobs.each {
+  allBuilds = it.getBuilds()
+  jobName = it.fullName
+  allBuilds.each {
+    String buildTimstamp = it.time
+    Date buildDateTmp = Date.parse( 'E MMM dd HH:mm:ss Z yyyy', buildTimstamp )
+    String buildDate = buildDateTmp.format( 'M-d-yyyy' )
+    if(buildDate.compareTo(fromDate) >= 0 && buildDate.compareTo(toDate) <= 0) {
+        totalBuilds++;
+        String result = it.result
+        if(result.equals("SUCCESS")){
+          successBuilds++
+            }else if(result.equals("FAILURE")){
+          failureBuilds++
+            }else{
+          unstableBuilds++
+            }
+        
+        String[] actions = it.actions[6]
+      def isDevBuild = 0
+        if(actions != null){
+          totalDevBuilds++
+            isDevBuild = 1
+        }
+      def buildDetails = [
+        	'name': it.description.replace("Started by GitLab push by ", ""),
+      		'isDevBuild':isDevBuild,
+        	'result':result
+      ]
+      users.add(buildDetails)
+    }
+  }
+  def result = []
+  users.each {
+    def userName = it.name
+    def flag = 1
+    result.each{
+      if(userName == it.name){
+      	flag = 0
+      }
+    }
+    if(flag){
+    Integer totalUserBuilds = 0;
+    Integer totalUserDevBuilds = 0;
+    Integer successUserBuilds = 0;
+    Integer failureUserBuilds = 0;
+    Integer unstableUserBuilds = 0;
+    
+    users.each {
+        if(userName == it.name){
+            String resultStatus = it.result
+            totalUserBuilds++
+            if(it.isDevBuild){
+              totalUserDevBuilds++
+            }
+            if(resultStatus.equals("SUCCESS")){
+              successUserBuilds++
+            }else if(resultStatus.equals("FAILURE")){
+              failureUserBuilds++
+            }else{
+              unstableUserBuilds++
+            }
+        }
+    }
+    def userBuildDetails = [
+        	'name': userName,
+      		'totalBuilds':totalUserBuilds,
+            'totalBuildsOnDev':totalUserDevBuilds,
+            'successBuilds':successUserBuilds,
+      		'failedBuilds':failureUserBuilds,
+      		'unstableBuilds':unstableUserBuilds
+      ]
+   result.add(userBuildDetails)
+  }
+  }
+  result.each {
+    println "Name: ${it.name} | Total: ${it.totalBuilds} | Total On dev: ${it.totalBuildsOnDev} | Success: ${it.successBuilds} | Failed: ${it.failedBuilds} | Unstable: ${it.unstableBuilds}" 
+  }
+  println "Total: ${totalBuilds} | Total On dev: ${totalDevBuilds} | Success: ${successBuilds} | Failed: ${failureBuilds} | Unstable: ${unstableBuilds}" 
+}
+ /*println "----------------------------------------------"
+  def runningSince = groovy.time.TimeCategory.minus( new Date(), it.getTime() )
+  def currentStatus = it.buildStatusSummary.message
+  def cause = it.getCauses()[0] //we keep the first cause
+   
+  def user = cause instanceof Cause.UserIdCause? cause.getUserId():""
+  println "Build: ${it} | Since: ${runningSince} | Status: ${result} | Cause: ${cause} | User: ${user}" 
+  println "Type: ${it.class} , Value: ${it.dump()}" 
+  
+*/

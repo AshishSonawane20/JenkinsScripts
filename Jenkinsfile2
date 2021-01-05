@@ -1,0 +1,243 @@
+import java.text.SimpleDateFormat
+import groovy.transform.Field
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
+@Field
+String workspace = "/opt/jenkins/workspace/IFLI-Gap-Web-Pipeline"
+@Field
+String developmentNodeLabel = "baxa-pos-node"
+@Field
+String uatNodeLabel = "baxa-pos-node"
+@Field
+String repositoryUrl = "https://git.fulcrumww.com/IFL_Grp/IFL_GAP_WEB.git"
+
+@Field
+String repositoryCredId = "baxa_lankesh_credential"
+
+node{
+	//sh "env"
+	if(env.gitlabActionType){
+		switch(gitlabActionType) {
+			case 'PUSH':
+					switch(gitlabTargetBranch) {
+						case 'development':
+							timestampedNode(developmentNodeLabel){
+								checkoutGitlab('development')
+								//getGitChangeSet()
+								sonarScan()
+								qualityGate()
+								executeBuildCommands()
+								sshTransfer()
+								deployWarFiles()
+							}
+							break
+						case 'uat':
+							timestampedNode(uatNodeLabel){
+								checkoutGitlab('uat')
+								getGitChangeSet()
+								sonarScan()
+								qualityGate()
+								executeBuildCommands()
+								sshTransfer()
+								deployWarFiles()
+							}
+							break
+						default:
+							echo "any other branch"
+							break
+					}
+				break
+			default:
+				echo "Default Value Event"
+				break
+		}
+	}else{
+		def defaultEnvironment = "development"
+		def selectedEnvironment
+		try {
+			timeout(time: 10, unit: 'MINUTES') {
+				def INPUT_PARAMS = input message: 'Please Provide Parameters', ok: 'Next',
+								parameters: [
+									choice(name: 'ENVIRONMENT', choices: ['Development','UAT'].join('\n'), description: 'Please select the Environment')
+								]
+				selectedEnvironment = INPUT_PARAMS.toString()
+			}
+		}catch (Exception e) {
+			selectedEnvironment = defaultEnvironment
+			echo "User input timed out or cancelled, continue with default values"
+		}
+		
+		if(selectedEnvironment == "Development"){
+			timestampedNode(developmentNodeLabel){
+				echo "Deploying from development branch on Development environment"
+				checkoutGitlab('development')				
+				executeBuildCommands()
+				//sonarScan()
+				publishOnNexus()
+				///sshTransfer()
+				//deployWarFiles()
+				//performanceTesting()
+				
+			}
+		}else if(selectedEnvironment == "UAT"){
+			timestampedNode(uatNodeLabel){
+				echo "Deploying from uat branch on UAT environment"
+				checkoutGitlab('uat')
+				executeBuildCommands()
+				sshTransfer()
+				deployWarFiles()
+			}
+		}
+	}
+}
+def timestampedNode(String label = "master", Closure body) {
+  node(label) {
+    wrap([$class: 'TimestamperBuildWrapper']) {
+      body.call();
+    }
+  }
+}
+def checkoutGitlab(branch){
+	stage('Checkout'){
+		checkout(
+				[
+					$class: 'GitSCM',
+					branches: [[name: "*/${branch}"]],
+					doGenerateSubmoduleConfigurations: false,
+					extensions: [],
+					submoduleCfg: [],
+					userRemoteConfigs: [[
+						credentialsId: repositoryCredId,
+						url: repositoryUrl
+					]]
+				]
+			)
+	}
+}
+
+def publishOnNexus(){
+	stage('Publish on Nexus'){
+		nexusPublisher nexusInstanceId: 'nexusserver3', nexusRepositoryId: 'IFL-GAP-WEB', packages: [[$class: 'MavenPackage', mavenAssetList: [[classifier: '', extension: '', filePath: '/opt/jenkins/workspace/IFLI-Gap-Web-Pipeline/guaranteedPlan-core/target/guaranteedAnnuityPlan-core-0.0.1-SNAPSHOT.jar']], mavenCoordinate: [artifactId: 'guaranteedAnnuityPlan', groupId: 'guaranteedAnnuityPlan', packaging: 'jar', version: '1.0']]]
+	}
+}
+
+
+
+def publishToNexus(){
+	stage('publis to nexus'){
+		def pom = readMavenPom file: 'pom.xml'
+        echo pom.version
+		def filesByGlob = findFiles(glob:"target/*.${pom.packaging}")
+		echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} "
+		
+		nexusArtifactUploader(
+                        nexusVersion: 'nexusserver3',
+                        protocol: 'http',
+                        nexusUrl: 'http://192.168.119.18:8081/',
+                        groupId: 'com.fulcrum.baxa',
+                        version: "2.0",
+                        repository: 'nexus_fulcrum_baxa_pos_api',
+                        credentialsId: '8511d6c3-19a5-4d57-a2e7-9e517d280ce0',
+                        artifacts: [
+                            [artifactId: 'posApi',
+                            file: "${filesByGlob[0].path}",
+                            type: 'war']
+                        ]
+                )
+		
+	}
+}
+
+def getGitChangeSet(){
+	stage('Changeset detection'){
+		def gitChangeList = sh (script: "(cd ${workspace} ; git diff-tree --no-commit-id --name-only -r ${env.gitlabAfter})", returnStdout: true)
+		println (gitChangeList)
+		println ("Scanning following projects:")
+		for (int j = 0; j < projects.size(); j++) {
+			def m = gitChangeList =~ /${projects[j]}/                                           
+			assert m instanceof Matcher                                       
+			if(m){  
+				projectsToScan.add(projects[j])
+				echo "${projects[j]}"
+			}
+		}
+	}
+}
+def sonarScan(){
+	stage('Sonar scanning'){		
+			withSonarQubeEnv('Sonarqube Server') {
+				sh "(cd ${workspace}/guaranteedPlan-parent ; /home/fduser/dev/apache-maven-3.6.2/bin/mvn sonar:sonar)"
+			}
+	}
+}
+def qualityGate(){
+	stage("Quality Gate"){
+	for (int s = 0; s < projectsToScan.size(); s++) {
+		def props = readProperties  file: "${projectsToScan[s]}/.scannerwork/report-task.txt"
+		echo "properties=${props}"
+		def sonarServerUrl=props['serverUrl']
+		def ceTaskUrl= props['ceTaskUrl']
+		def ceTask
+		timeout(time: 25, unit: 'MINUTES') {
+			waitUntil {
+				def response = httpRequest url : ceTaskUrl, authentication: 'sonar_quality_gate'
+				ceTask = readJSON text: response.content
+				echo ceTask.toString()
+				echo ceTask["task"]["status"]
+				return "SUCCESS".equals(ceTask["task"]["status"])
+			}
+		}
+	}
+	}
+}
+def executeBuildCommands(){
+	stage("Buid process"){
+		sh "( cd ${workspace} ;/home/fduser/dev/apache-maven-3.6.2/bin/mvn clean install -f guaranteedPlan-parent/pom.xml -Dmaven.test.skip=true -Dhttps.protocols=TLSv1.2)"
+		
+	}
+}
+
+def performanceTesting(){
+	stage('PerformanceTesting'){
+		sh "(/home/fduser/dev/apache-jmeter-5.1.1/bin/jmeter -n -t /home/fduser/dev/pos-jmeter-script/TEST_POS_CRIF.jmx -Jthreads=1 -l /home/fduser/dev/pos-jmeter-script/report/report.jtl)"
+		perfReport filterRegex: '', sourceDataFiles: '/home/fduser/dev/pos-jmeter-script/report/report.jtl'
+	}
+	
+}
+def sshTransfer(){
+	stage('SSH transfer') {		
+		sh "cp ${workspace}/target/baxaposservices.war /home/fduser/dev/apache-tomcat-8.5.45/webapps"
+	}
+}
+def deployWarFiles(){
+	stage('Deployment') {
+		def date = new Date()
+		sdf = new SimpleDateFormat("dd-mm-yyyy-HH-mm")
+		println sdf.format(date)
+		def currentDate = sdf.format(date)
+
+		def commandScript = """
+		
+		"""
+		
+		sh""" 
+			echo "${commandScript}" > /opt/jenkins/deployment.sh
+		"""
+		echo "Waiting for node to deploy"
+		sh "sh /opt/jenkins/deployment.sh"
+	}
+}
+
+def sendMail(){
+	stage('Send Email') {
+		echo 'Send Email'
+		mail bcc: '', 
+		body: 'Failed Pipeline', 
+		cc: '', 
+		from: 'FWIN02099@fulcrumdigital.com', 
+		replyTo: '', 
+		subject: 'Failed Pipeline', 
+		to: 'FWIN02099@fulcrumdigital.com'
+	}
+}

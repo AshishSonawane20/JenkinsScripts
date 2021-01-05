@@ -1,0 +1,217 @@
+import java.text.SimpleDateFormat
+import groovy.transform.Field
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+import java.nio.file.*;
+
+@Field
+String developmentNodeLabel = "pns-dev-server-node"
+
+@Field
+String uatNodeLabel = "pns-dev-server-node"
+
+@Field
+String projectName = "PNS-pipeline"
+
+@Field
+String repositoryUrl = "https://git.fulcrumww.com/PnS_Grp/PnS.git"
+
+@Field
+String repositoryCredId = "6521d470-22e4-4afe-b3fc-a2dff9b8c7ba"
+
+@Field List changedFileLocations = []
+node{
+if(env.gitlabActionType){
+	switch(gitlabActionType) {
+		case 'PUSH':
+				switch(gitlabTargetBranch) {
+					case 'development':
+						timestampedNode(developmentNodeLabel){
+							checkoutGitlab('development')
+							getGitChangeSet()
+							//sonarScan()
+							//qualityGate()
+							executeBuildCommands()
+							createDeploymentFile()
+							deployment()
+						}
+						break
+					case 'uat':
+						timestampedNode(uatNodeLabel){
+							checkoutGitlab('uat')
+							getGitChangeSet()
+							sonarScan()
+							//qualityGate()
+							executeBuildCommands()
+							createDeploymentFile()
+							deployment()
+						}
+						break
+					default:
+						echo "Push to ${gitlabTargetBranch} branch"
+						break
+				}
+			break
+		default:
+			echo "Default Value Event"
+			break
+	}
+}else{
+	timestampedNode(developmentNodeLabel){
+	List tmp = ["d:\\jenkins\\workspace\\PNS-pipeline\\PNS.LCMS.Web\\App\\Main\\views\\about\\about.cshtml",
+	"d:\\jenkins\\workspace\\PNS-pipeline\\PNS.LCMS.Web\\App\\Main\\views\\about",
+	"d:\\jenkins\\workspace\\PNS-pipeline\\PNS.LCMS.Web\\App\\Main\\views\\advSearch\\advanceSearch.cshtml asdsad dadas ssad dasd"];
+		for(int i = 0; i < tmp.size(); i++){
+			Path p = Paths.get(tmp[i]);
+			echo tmp[i]
+			println(Files.exists(p));      // Check if the file exists
+			println(Files.isDirectory(p)); // Check if it's a directory
+		}
+		checkoutGitlab('development')
+		getGitChangeSet()
+		executeBuildCommands()
+
+	}
+}
+}
+def timestampedNode(String label = "master", Closure body) {
+  node(label) {
+    wrap([$class: 'TimestamperBuildWrapper']) {
+      body.call();
+    }
+  }
+}
+def getGitChangeSet(){
+	stage('Changeset detection'){
+		String response = bat (
+			//script: "(git diff-tree --no-commit-id --name-only -r ${env.gitlabAfter})",
+			//script: "(git log -m -1 --name-only)",
+			script: "(git log -m -1 --name-status | grep -E '^[A-Z]\\b' | sort | uniq | sed -e 's/^\\w\\t*\\ *//')",
+			returnStdout: true
+		).trim();
+		echo "Git response: - "+response;
+		String gitChangeSet = response.substring(response.indexOf(")")+1);
+		echo "change set is - "+gitChangeSet;
+		String[] splited = gitChangeSet.split("PNS.LCMS.Web"); // with alternate extension
+		println("size::"+splited.length);
+		String seperator = "PNS.LCMS.Web";
+		for(int i = 1; i < splited.length; i++){
+			boolean containsData = splited[i]?.trim()
+			if(containsData){
+				String currentPath = splited[i].replace('/', '\\');
+				String temp = currentPath;
+				String t3 = seperator + temp;
+				currentPath = t3;
+				echo "path is - "+ currentPath;
+				changedFileLocations.add(currentPath)
+			}
+		}
+	}
+}
+def checkoutGitlab(branch){
+	stage('Checkout'){
+		checkout(
+				[
+					$class: 'GitSCM',
+					branches: [[name: "*/${branch}"]],
+					doGenerateSubmoduleConfigurations: false,
+					extensions: [],
+					submoduleCfg: [],
+					userRemoteConfigs: [[
+						credentialsId: repositoryCredId,
+						url: repositoryUrl
+					]]
+				]
+			)
+	}
+}
+
+def sonarScan(){
+	stage('Sonar scanning'){
+		withSonarQubeEnv('Sonarqube Server') {
+				bat '''
+				C:\\sonar-scanner-3.3.0.1492-windows\\bin\\sonar-scanner.bat
+				'''
+		}
+	}
+}
+def qualityGate(){
+stage("Quality Gate"){
+		def props = readProperties  file: '.scannerwork\\report-task.txt'
+		echo "properties=${props}"
+		def sonarServerUrl=props['serverUrl']
+		def ceTaskUrl= props['ceTaskUrl']
+		def ceTask
+		timeout(time: 1, unit: 'HOURS') {
+			waitUntil {
+				def response = httpRequest url : ceTaskUrl, authentication: 'sonar_quality_gate'
+				ceTask = readJSON text: response.content
+				echo ceTask.toString()
+				echo ceTask["task"]["status"]
+				return "SUCCESS".equals(ceTask["task"]["status"])
+			}
+		}
+	}
+}
+def executeBuildCommands(){
+	stage("Restore Packages"){
+		bat "dotnet restore"
+	}
+	/*stage('Restore PACKAGES') {
+		bat "dotnet restore --configfile NuGet.Config"
+	}*/
+	stage('Clean') {
+		bat 'dotnet clean'
+	}
+	stage('DotNet Build') {
+		bat 'dotnet build --configuration Release'
+	}
+	stage('Angular Build') {
+		bat '''
+			cd d:\\jenkins\\workspace\\PNS-pipeline\\PNS.LCMS.Web\\App\\Grunt 
+			grunt
+		'''
+	}
+	/*stage('Pack') {
+   		bat 'dotnet pack --no-build --output nupkgs'
+	}
+	stage('Publish') {
+		bat "dotnet nuget push **\\nupkgs\\*.nupkg -k yourApiKey -s http://myserver/artifactory/api/nuget/nuget-internal-stable/com/sample"
+	}*/
+}
+def createDeploymentFile(){
+	stage('Creating Deployment Environment') {
+		String commandScript = "net use Z: \\\\lipsv10Clone\\C\$ Scahill123 /user:FLPUNDRCEHFVF\\administrator"+"\n";
+		commandScript += "xcopy C:\\jenkins\\workspace\\PNS-pipeline\\PNS.LCMS.Web\\App\\dist\\* Z:\\PNSUAT_New\\App\\dist /s /i /y"+"\n";
+		commandScript += "xcopy C:\\jenkins\\workspace\\PNS-pipeline\\PNS.LCMS.Web\\bin\\* Z:\\PNSUAT_New\\bin /s /i /y"+"\n";
+
+		for(int i = 0; i < changedFileLocations.size(); i++){
+			def source = changedFileLocations[i].trim();
+			def destination = changedFileLocations[i].replace("PNS.LCMS.Web\\","").trim();
+			String filePath = destination.substring(0, destination.lastIndexOf("\\")+1);
+			echo "filePath: "+filePath
+			commandScript += "xcopy C:\\jenkins\\workspace\\PNS-pipeline\\${source} Z:\\PNSUAT_New\\${filePath} /s /i /y"+"\n";
+		}
+		commandScript += "net use Z: /delete";
+
+		writeFile file: 'C:\\jenkins\\build.bat', text: commandScript
+	}
+}
+def deployment(){
+	stage('Deployment') {
+		bat 'C:\\jenkins\\build.bat'
+	}
+}
+
+def sendMail(){
+	stage('Send Email') {
+		echo 'Send Email'
+		mail bcc: '', 
+		body: 'Failed Pipeline', 
+		cc: '', 
+		from: 'FWIN02099@fulcrumdigital.com', 
+		replyTo: '', 
+		subject: 'Failed Pipeline', 
+		to: 'FWIN02099@fulcrumdigital.com'
+	}
+}

@@ -1,0 +1,177 @@
+#!/usr/bin/groovy
+import groovy.transform.Field
+
+@Field
+String repositoryUrl = "https://git.fulcrumww.com/Lafarge_Grp/Lafarge_PinoyBuilder.git"
+@Field
+String gitlabCredentialId = "6521d470-22e4-4afe-b3fc-a2dff9b8c7ba"
+@Field
+String projectPath = "Pinoy\\ Builder/"
+timestampedNode ("AWS-Test") {
+	sh "env"
+	
+	//checkoutGitlab('ci_cd_v1.0')
+	npmSetup()
+	//sonarScan()
+	//qualityGate()
+	build('Android')
+	//build('IOS')
+	//apkSign()
+	//webBuild()
+	//saveArtifacts()
+	//publish('Android')
+	//publish('IOS')
+	//sendEmails()
+}
+def timestampedNode(String label = "master", Closure body) {
+  node(label) {
+    wrap([$class: 'TimestamperBuildWrapper']) {
+      body.call();
+    }
+  }
+}
+
+def checkoutGitlab(branch){
+	stage ("Checkout") {
+		try {
+			stage('Checkout') {
+				checkout([
+					$class: 'GitSCM',
+					branches: [[name: "*/${branch}"]],
+					doGenerateSubmoduleConfigurations: false,
+					extensions: [[
+						$class: 'CloneOption', 
+						depth: 0, 
+						noTags: false, 
+						reference: '', 
+						shallow: false, 
+						timeout: 60
+					]],
+					submoduleCfg: [],
+					userRemoteConfigs: [[
+						credentialsId: gitlabCredentialId,
+						url: repositoryUrl
+					]]
+				])
+			}
+		} catch (e) {
+			echo "Pipeline failed"
+			throw e
+		}
+	}
+}
+def npmSetup(){
+	stage('NPM Setup') {
+		
+	   sh """
+			cd ${projectPath}
+			sudo npm rebuild node-sass
+			sudo npm install
+			"""
+	}
+}
+def sonarScan(){
+	stage('Sonarqube') {
+		def scannerHome = tool name: 'SonarRunner 2.4'
+		withSonarQubeEnv('Sonarqube Server') { 
+			try {
+				sh "${scannerHome}/bin/sonar-scanner"
+			} catch (e) {
+				error "Pipeline aborted due to sonarqube scan failure"
+				throw e
+			}
+		}
+	}
+}
+def qualityGate(){
+	stage("Quality Gate"){
+		def props = readProperties  file: '.sonar/report-task.txt'
+		echo "properties=${props}"
+		def sonarServerUrl=props['serverUrl']
+		def ceTaskUrl= props['ceTaskUrl']
+		def ceTask
+		try {
+			timeout(time: 15, unit: 'MINUTES') {
+				waitUntil {
+					def response = httpRequest url : ceTaskUrl, authentication: 'sonar_quality_gate'
+					ceTask = readJSON text: response.content
+					echo ceTask.toString()
+					echo ceTask["task"]["status"]
+					return "SUCCESS".equals(ceTask["task"]["status"])
+				}
+			}
+		} catch (e) {
+			error "Pipeline aborted due to quality gate failure"
+			throw e
+		}
+	}
+}
+def build(platform){
+	if(platform == 'Android'){
+		stage ("Android Build") {
+			/*if (env.ANDROID_HOME == null || env.ANDROID_HOME == "") error "ANDROID_HOME not defined"
+			if (env.JAVA_HOME == null || env.JAVA_HOME == "") error "JAVA_HOME not defined"*/
+			try {
+               sh """
+					cd ${projectPath}
+					sudo ionic cordova build android --release
+					"""
+			}catch (Exception e) {
+				error "Unable to create build"
+				throw e
+			}			
+		}
+	}else if(platform == 'IOS'){
+		stage ("IOS Build") {
+			/*if (env.ANDROID_HOME == null || env.ANDROID_HOME == "") error "ANDROID_HOME not defined"
+			if (env.JAVA_HOME == null || env.JAVA_HOME == "") error "JAVA_HOME not defined"*/
+			try {
+				sh 'ionic cordova build ios --release'
+			}catch (Exception e) {
+			  error "Unable to create build"
+			  throw e
+			}
+		}
+	}
+}
+def apkSign(){
+	//sh 'jarsigner -storepass your_password -keystore keys/yourkey.keystore platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk nameApp'
+	echo "APK sign"
+}
+def webBuild(){
+	sh 'sudo npm run build --prod'
+}
+def saveArtifacts(){
+	stage('Save artifacts and publish') {
+      step([$class: 'ArtifactArchiver', artifacts: "**/*.apk", excludes: "**/*unsigned.apk", fingerprint: true])
+			
+    }
+}
+def publish(platform){
+	if(platform == 'Android'){
+		stage ('Android publish') {
+		  try {
+			echo "Publish APK"
+		  } catch (Exception e) {
+			echo "Release cancelled"
+		  }
+		}
+	}else if(platform == 'IOS'){
+		stage ('IOS publish') {
+		  try {
+			echo "Publish IOS"
+		  } catch (Exception e) {
+			echo "Release cancelled"
+		  }
+		}
+	}
+}
+// To send emails to everyone relevant to this build (Requires Email-ext plugin)
+def sendEmails() {
+  emailext body: "See ${env.BUILD_URL}",
+    recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']],
+      subject: "Jenkins Build Successful",
+      to: "ashish.sonwane@fulcrumdigital.com";
+}
+
+

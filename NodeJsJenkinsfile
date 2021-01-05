@@ -1,0 +1,111 @@
+import groovy.transform.Field
+
+@Field
+String repositoryUrl = "https://git.fulcrumww.com/Lafarge_Grp/PinoyBuilder.git"
+@Field
+String gitlabCredentialId = "6521d470-22e4-4afe-b3fc-a2dff9b8c7ba"
+
+node {
+	tool name: 'JenkinsNodeJs', type: 'nodejs' // Added nodeJs tool plugin and configured in global tool configuration in jenkins with name 'JenkinsNodeJs'
+	if(env.gitlabActionType == 'PUSH'){
+		if(env.gitlabTargetBranch == 'master'){
+				echo "master checkout"
+				checkoutGitlab('master')
+
+		}else if(env.gitlabTargetBranch == 'development'){
+				echo "development checkout"
+				checkoutGitlab('development')
+		
+		}
+		sonarScan()		
+		qualityGate()
+		build()
+	}
+}
+def checkoutGitlab(branch){
+	try {
+		stage('Checkout') {
+			checkout([
+				$class: 'GitSCM',
+				branches: [[name: "*/${branch}"]],
+				doGenerateSubmoduleConfigurations: false,
+				extensions: [],
+				submoduleCfg: [],
+				userRemoteConfigs: [[
+					credentialsId: gitlabCredentialId,
+					url: repositoryUrl
+				]]
+			])
+		}
+    } catch (e) {
+        echo "This will run only if failed"
+        throw e
+    } finally {
+		echo "Checkout from ${branch} completes"
+	}
+	
+}
+def sonarScan(){
+	stage('Sonarqube') {
+		def scannerHome = tool name: 'SonarRunner 2.4'
+		withSonarQubeEnv('Sonarqube Server') { 
+			try {
+				sh "${scannerHome}/bin/sonar-scanner"
+			} catch (e) {
+				error "Pipeline aborted due to sonarqube scan failure"
+				throw e
+			} finally {
+				echo "Sonar scan completes"
+			}
+		}
+	}
+}
+def qualityGate(){
+	/*stage('Quality Gate') {
+		try {
+		timeout(time: 15, unit: 'MINUTES') {
+			 waitForQualityGate abortPipeline: true
+			def qg = waitForQualityGate()
+			if (qg.status != 'OK') {
+				  error "Pipeline aborted due to quality gate failure: ${qg.status}"
+			}
+			}catch (e) {
+				error "Pipeline aborted due to sonarqube scan failure"
+				throw e
+			} finally {
+				echo "Sonar scan completes"
+			}
+		}
+	}*/
+	stage("Quality Gate"){
+		def props = readProperties  file: '.sonar/report-task.txt'
+		echo "properties=${props}"
+		def sonarServerUrl=props['serverUrl']
+		def ceTaskUrl= props['ceTaskUrl']
+		def ceTask
+		try {
+			timeout(time: 15, unit: 'MINUTES') {
+				waitUntil {
+					def response = httpRequest url : ceTaskUrl, authentication: 'sonar_quality_gate'
+					ceTask = readJSON text: response.content
+					echo ceTask.toString()
+					echo ceTask["task"]["status"]
+					return "SUCCESS".equals(ceTask["task"]["status"])
+					/*if("SUCCESS".equals(ceTask["task"]["status"])){
+						return true
+					}else if("FAILED".equals(ceTask["task"]["status"])){
+						return false
+					}*/
+				}
+			}
+		} catch (e) {
+			error "Pipeline aborted due to quality gate failure"
+			throw e
+		} finally {
+			echo "Quality gate check success"
+		}
+	}
+}
+def build(){
+	
+}

@@ -1,0 +1,123 @@
+node('pcc_codebase_label') {
+	echo "===================================Environment variables starts==================================="
+		sh "env"
+	echo "===================================Environment variables ends==================================="
+	switch(env.gitlabActionType) {
+		case 'PUSH':
+			echo "===================================PUSH event starts==================================="
+			switch(env.gitlabTargetBranch) {
+				case 'development':
+					echo "development branch"
+					checkoutGitlab('development')
+					sonarScan()
+					qualityGate()
+					sshTransfer('service_dev')
+					executeAfterBuildCommands('service_dev')
+					break
+				case 'qa':
+					checkoutGitlab('qa')
+					sshTransfer('service_qa')
+					executeAfterBuildCommands('service_qa')
+					break
+				case 'uat':
+					checkoutGitlab('uat')
+					sshTransfer('service_uat')
+					executeAfterBuildCommands('service_uat')
+					break	
+				default:
+					echo "any other branch"
+					break
+			}
+			echo "===================================PUSH event ends==================================="
+			break
+		case 'MERGE':
+			echo "===================================MERGE event starts==================================="
+				sh "env"
+			echo "===================================MERGE event ends====================================="
+			break
+		default:
+			echo "Default Value Event"
+			break
+	}
+}
+def sonarScan(){
+	stage('Sonar'){
+		echo "===================================Sonar scanner starts================================="
+		withSonarQubeEnv('Sonarqube Server') {
+			sh "cd /var/www/pcc/workspace/pcc_codebase_pipeline"
+			sh "/var/www/sonar-scanner-3.3.0.1492-linux/bin/sonar-scanner"
+		}
+		echo "===================================Sonar scanner ends==================================="
+	}
+}
+def qualityGate(){
+	stage("Quality Gate"){
+		echo "===================================Quality Gate starts================================="
+		def props = readProperties  file: '.scannerwork/report-task.txt'
+		echo "properties=${props}"
+		def sonarServerUrl=props['serverUrl']
+		def ceTaskUrl= props['ceTaskUrl']
+		def ceTask
+		timeout(time: 1, unit: 'HOURS') {
+			waitUntil {
+				def response = httpRequest url : ceTaskUrl, authentication: 'sonar_quality_gate'
+				ceTask = readJSON text: response.content
+				echo ceTask.toString()
+				echo ceTask["task"]["status"]
+				return "SUCCESS".equals(ceTask["task"]["status"])
+			}
+		}
+		/*def response2 = httpRequest url : sonarServerUrl + "/api/qualitygates/project_status?analysisId=" + ceTask["task"]["analysisId"], authentication: 'SonarQube Quality gate'
+		def qualitygate =  readJSON text: response2.content
+		echo qualitygate.toString()
+		if ("ERROR".equals(qualitygate["projectStatus"]["status"])) {
+			error "Quality Gate failure"
+		}*/
+		echo "===================================Quality Gate ends==================================="
+	}
+}
+def sshTransfer(folder_path){
+	stage('SSH transfer') {
+		echo "===================================SSH transfer starts==================================="
+		sh "rsync -auv /var/www/pcc/workspace/pcc_codebase_pipeline/ /var/www/${folder_path}/"
+		echo "===================================SSH transfer ends==================================="
+	}
+}
+def checkoutGitlab(branch){
+	stage('Checkout'){
+		echo "===================================Checkout stage for ${branch} starts==================================="
+		checkout(
+				[
+					$class: 'GitSCM',
+					branches: [[name: "*/${branch}"]],
+					doGenerateSubmoduleConfigurations: false,
+					extensions: [],
+					submoduleCfg: [],
+					userRemoteConfigs: [[
+						credentialsId: 'devops_credential',
+						url: 'https://git.fulcrumww.com/PCCLightHouse/PCC-LightHouse_1.git'
+					]]
+				]
+			)
+		echo "===================================Checkout stage for ${branch} ends==================================="
+	}
+}
+def checkCommitMessage(){
+	result = sh (script: "git log -1 | grep '.*Merge branch.*.*into development.*'", returnStatus: true)
+	result1 = sh (script: "git log -1 | grep '.*master.*'", returnStatus: true)
+	result2 = sh (script: "git log -1 | grep '.*uat_test.*'", returnStatus: true)
+	
+	if (result == 0 && result1 != 0 && result2 != 0) {
+		return true
+	}else {
+		return false
+	}
+}
+def executeAfterBuildCommands(folder_path){
+	echo "===================================Executing commands starts==================================="
+	/*sh "( cd /var/www/service_dev/ ; php artisan migrate )"
+	sh "( cd /var/www/service_dev/ ; php artisan swagger-lume:generate )"*/
+	sh "( cd /var/www/${folder_path}/ ; sudo chmod -R 777 storage )"
+	sh "( cd /var/www/${folder_path}/ ; sudo chmod -R 777 public )"
+	echo "===================================Executing commands ends==================================="
+}

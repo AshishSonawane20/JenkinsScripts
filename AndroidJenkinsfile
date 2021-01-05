@@ -1,0 +1,250 @@
+#!/usr/bin/groovy
+import groovy.transform.Field
+import java.text.SimpleDateFormat
+
+@Field
+String repositoryUrl = "https://git.fulcrumww.com/IFL/IFL_RAPID_Mobile.git"
+@Field
+String gitlabCredentialId = "6521d470-22e4-4afe-b3fc-a2dff9b8c7ba"
+@Field
+String projectName = "IFLI-android-pipeline-uat"
+@Field
+String workspace = "/Users/FWWMAC/jenkins/workspace"
+@Field
+String buildStudio = "/usr/local/Caskroom/android-sdk/build-tools/28.0.0"
+@Field
+String releaseBuildPath = "iFLI/build/outputs/apk/release"
+@Field
+String backupBuildPath = "/Users/FWWMAC/Backups/IFLI/uat"
+@Field
+String apkName = "IFLI_RAPID18_V_"
+@Field
+String apkVersion = ""
+@Field
+String apkVersionDesc = ""
+
+def hockeyAppTokenMap = [
+	"ashish.sonwane@fulcrumdigital.com": "0f927a03f12b46258fb2ea45e8e8d100",
+	"sandip.jadhav@fulcrumdigital.com": "c2f340ea4ff44769a5ec5f9768ed8b44",
+	"kedar.labade@fulcrumdigital.com": "e2e2370affcf40bcb1b151c8895fccf8",
+	"amruta.bidkar@fulcrumdigital.com":"7cb75bc75dd446ea8b5184e54f232a70",
+	"default": "c2f340ea4ff44769a5ec5f9768ed8b44"
+]
+@Field
+String authorToken = ""
+
+timestampedNode ("mac-mini-label"){
+	sh "env"
+	if(env.gitlabActionType){
+		switch(gitlabActionType) {
+			case 'PUSH':
+					switch(gitlabTargetBranch) {
+						case 'uat':
+								if(hockeyAppTokenMap["${env.gitlabUserEmail}"] == null){
+									println("Author not found going through default value")
+									authorToken = "default"
+								}else{
+									authorToken = hockeyAppTokenMap["${env.gitlabUserEmail}"]
+									println("Author found: ${env.gitlabUserEmail}")
+								}
+								checkoutGitlab('uat')
+								sonarScan()
+								qualityGate()
+								build()
+								backupOldBuilds()
+								signAPK()
+								publish()
+							break
+						default:
+							echo "any other branch"
+							break
+					}
+				break
+			default:
+				echo "Default Value Event"
+				break
+		}
+	}else{
+		def authors = ""
+		hockeyAppTokenMap.each{ key, val ->
+			authors += "$key"
+			authors += "\n"
+		}
+		try {
+		timeout(time: 10, unit: 'MINUTES') {
+			userInput = input(
+						id: 'userInput',    
+						message: 'Choose an environment',    
+						parameters: [[
+							$class: 'ChoiceParameterDefinition', 
+							choices: authors, 
+							name: 'Authors'
+						]]  
+			)
+			echo("Parameters entered : ${userInput.toString()}")
+			authorToken = hockeyAppTokenMap["${userInput.toString()}"]
+		  }
+		} catch (Exception e) {
+		  error "User input timed out or cancelled"
+		}
+		checkoutGitlab('uat')
+		build()
+		backupOldBuilds()
+		signAPK()
+		publish()
+	}
+}
+def timestampedNode(String label = "master", Closure body) {
+  node(label) {
+    wrap([$class: 'TimestamperBuildWrapper']) {
+      body.call();
+    }
+  }
+}
+def checkoutGitlab(branch){
+	stage ("Checkout") {
+		try {
+			stage('Checkout') {
+				checkout([
+					$class: 'GitSCM',
+					branches: [[name: "*/${branch}"]],
+					doGenerateSubmoduleConfigurations: false,
+					extensions: [],
+					submoduleCfg: [],
+					userRemoteConfigs: [[
+						credentialsId: gitlabCredentialId,
+						url: repositoryUrl
+					]]
+				])
+			}
+		} catch (e) {
+			echo "Pipeline failed"
+			throw e
+		}
+		sh "chmod a+x ./gradlew"
+	}
+}
+def sonarScan(){
+	stage('Sonar scan') {
+		def scannerHome = tool name: 'SonarRunner 2.4'
+		withSonarQubeEnv('Sonarqube Server') { 
+			try {
+				sh "${scannerHome}/bin/sonar-scanner"
+			} catch (e) {
+				error "Pipeline aborted due to sonarqube scan failure"
+				throw e
+			}
+		}
+	}
+}
+def qualityGate(){
+	stage("Quality gate checking"){
+		def props = readProperties  file: '.sonar/report-task.txt'
+		echo "properties=${props}"
+		def sonarServerUrl=props['serverUrl']
+		def ceTaskUrl= props['ceTaskUrl']
+		def ceTask
+		try {
+			timeout(time: 15, unit: 'MINUTES') {
+				waitUntil {
+					def response = httpRequest url : ceTaskUrl, authentication: 'sonar_quality_gate'
+					ceTask = readJSON text: response.content
+					echo ceTask.toString()
+					echo ceTask["task"]["status"]
+					return "SUCCESS".equals(ceTask["task"]["status"])
+				}
+			}
+		} catch (e) {
+			error "Pipeline aborted due to quality gate failure"
+			throw e
+		}
+	}
+}
+def build(){
+	stage ("Build") {
+		if (env.ANDROID_HOME == null || env.ANDROID_HOME == "") error "ANDROID_HOME not defined"
+		if (env.JAVA_HOME == null || env.JAVA_HOME == "") error "JAVA_HOME not defined"
+
+		def d = [versionName: 'Default', versionCode: '1']
+		HashMap<String, Object> props = readProperties defaults: d, file: 'gradle.properties'
+		
+		currentBuild.displayName = "#${env.BUILD_NUMBER}~V${props.versionName}~VC${props.versionCode}"
+		apkVersion = props.versionName
+		apkVersionDesc = props.versionDesc
+		env.COMMON_BUILD_ARGS = " -PBUILD_NUMBER=${env.BUILD_NUMBER} -PBRANCH_NAME=${env.BRANCH_NAME}" +
+		  " -PversionName=${props.versionName} -PversionCode=${props.versionCode}"
+		/*./gradlew assembleDebug ${env.COMMON_BUILD_ARGS}*/
+		try {
+		sh "./gradlew clean"
+			sh """
+				  ./gradlew assembleRelease ${env.COMMON_BUILD_ARGS}
+			   """
+		}catch (Exception e) {
+		  error "Unable to create build"
+		  throw e
+		}
+	}
+}
+def signAPK(){
+	stage('Sign apk'){
+		try {
+			sh "${buildStudio}/zipalign -v -p 4 ${workspace}/${projectName}/${releaseBuildPath}/iFLI-release-unsigned.apk ${workspace}/${projectName}/${releaseBuildPath}/app-unsigned-aligned.apk"
+		}catch (Exception e) {
+			error 'Err: Build failed with Error: ' + e.toString()
+		}
+		withCredentials([string(credentialsId: 'signingPassSecret', variable: 'JKS_PSS')]) {
+			sh "${buildStudio}/apksigner sign --ks /Users/FWWMAC/jenkins/keystore/uat_keystore.jks --ks-pass pass:$JKS_PSS --out ${apkName}${apkVersion}.apk ${workspace}/${projectName}/${releaseBuildPath}/app-unsigned-aligned.apk"
+		}
+	}
+}
+def backupOldBuilds(){
+	stage('Backup'){
+		def date = new Date()
+		sdf = new SimpleDateFormat("dd-mm-yyyy-HH-mm-ss")
+		println sdf.format(date)
+		def currentDate = sdf.format(date)
+		try {
+			sh "mkdir ${backupBuildPath}/Back_${currentDate}"
+			sh "mv ${workspace}/${projectName}/${releaseBuildPath}/app-unsigned-aligned.apk ${backupBuildPath}/Back_${currentDate}"
+			sh "mv ${workspace}/${projectName}/${apkName}${apkVersion}.apk ${backupBuildPath}/Back_${currentDate}"
+		}catch (Exception e) {
+			echo "Old builds not available"
+		}
+	}
+}
+
+def publish(){
+	stage('Publish'){
+		sh """
+			curl \
+			  -F "status=2" \
+			  -F "notify=2" \
+			  -F "notes=${apkVersionDesc}" \
+			  -F "notes_type=0" \
+			  -F "ipa=@${workspace}/${projectName}/${apkName}${apkVersion}.apk" \
+			  -H "X-HockeyAppToken: ${authorToken}" \
+			  https://rink.hockeyapp.net/api/2/apps/185f4782646a4db493fd4d93b94e5c4c/app_versions/upload			 
+		"""
+	}
+}
+def release(){
+	stage ('Release') {
+	  try {
+		input 'Do we release this build?'
+		node {
+		  echo "Push Release tag"
+		  def date  = sh(returnStdout: true, script: 'date -u +%Y%m%d').trim()// = new Date().format('yyyyMMdd') // apparently we can't use Date here, not a problem
+		  gitLib.pushSSH(tagName: "release-${date}", commitMsg: "Jenkins promoted");
+		  // Do your release stuff
+		}
+	  } catch (Exception e) {
+		echo "Release cancelled"
+	  }
+	}
+}
+def sendEmails() {
+  emailext body: "See ${env.BUILD_URL}",
+    recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']],
+      subject: "Jenkins Build Successful",
+      to: "ashish.sonwane@fulcrumdigital.com";
+}

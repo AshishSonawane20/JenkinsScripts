@@ -1,0 +1,57 @@
+import groovy.transform.Field
+import java.text.SimpleDateFormat
+
+@Field
+String containerName = "wlsadmin-".${env.BUILD_NUMBER}
+
+@Field
+String imageName = "ashishfulcrum/weblogic_server:11g"
+
+@Field
+String applicationName = "gameoflife-".${env.BUILD_NUMBER}
+
+
+timestampedNode("master"){
+stages {
+        stage('Checkout') {
+    	steps {
+                checkoutGitlab('master')
+            }
+        }
+	stage('Creating application container') {
+	steps {
+		 sh label: '', script: 'docker run --name ${containerName} -p 8001:7001 -d -i ${imageName}'
+		}
+	}
+	stage('Copying application') {
+	steps {
+		 sh label: '', script: 'docker cp gameoflife.war ${containerName}:/u01/oracle/weblogic/user_projects/gameoflife.war'
+		}
+	}
+	stage('Deploying application') {
+	steps{
+		 sh label: '', script: ''' java weblogic.Deployer -adminurl t3://localhost:7001 -username weblogic -password welcome1 -deploy -name ${applicationName} -targets AdminServer -source /u01/oracle/weblogic/user_projects/gameoflife.war '''
+		}
+	}
+    }
+}
+def timestampedNode(String label = "master", Closure body) {
+  node(label) {
+    wrap([$class: 'TimestamperBuildWrapper']) {
+      body.call();
+    }
+  }
+}
+
+def checkoutGitlab(branch){
+checkout(
+	$class: 'GitSCM',
+	branches: [[name: "*/${branch}"]],
+	doGenerateSubmoduleConfigurations: false,
+	extensions: [],
+	submoduleCfg: [],
+	userRemoteConfigs: [[
+		credentialsId: 'f79664c9-1ff5-4c6e-bab8-b9a6eab06ab9',
+		url: 'https://git.fulcrumww.com/automation_scripts/sample_war_projects.git'
+	]])
+}

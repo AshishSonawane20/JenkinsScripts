@@ -1,0 +1,94 @@
+-----------------------------Dev branch----------------------------------------------
+<org.jenkinsci.plugins.workflow.job.WorkflowRun@3c1492d3 
+execution=CpsFlowExecution[Owner[pcc_angular_pipeline/243:pcc_angular_pipeline #243]] 
+executionPromise=com.google.common.util.concurrent.SettableFuture@71711f3 
+runMixIn=org.jenkinsci.plugins.workflow.job.WorkflowRun$1@ba067e7 
+listener=null 
+allowTerm=false 
+allowKill=false 
+executionLoaded=true 
+culprits=null 
+completed=true 
+logCopyGuard=java.lang.Object@71c56c40 
+checkouts=[org.jenkinsci.plugins.workflow.job.WorkflowRun$SCMCheckout@7cb3c8ce] 
+changeSets=[hudson.plugins.git.GitChangeSetList@7e061fca] 
+firstTime=true 
+project=org.jenkinsci.plugins.workflow.job.WorkflowJob@637290e3[pcc_angular_pipeline] 
+number=243 
+queueId=4182 
+previousBuild=null 
+nextBuild=null 
+previousBuildInProgress=null 
+id=null 
+timestamp=1559194446209 
+startTime=1559194446217 
+result=FAILURE 
+description=Started by GitLab push by Korhale Suhas Bapurao 
+displayName=null 
+state=COMPLETED 
+duration=173775 
+charset=UTF-8 
+keepLog=false 
+runner=null 
+artifactManager=null 
+actions=[
+	hudson.model.CauseAction@7d2998e8, 
+	hudson.triggers.SCMTrigger$BuildAction@1d0667a7, 
+	hudson.plugins.git.RevisionParameterAction@6c7b7900[commit=71b2d2da5ac5a36eb1b6322593789adee2c575a3], 
+	hudson.model.ParametersAction@375d6c0b, 
+	org.jenkinsci.plugins.workflow.libs.LibrariesAction@f2cd013, 
+	org.jenkinsci.plugins.workflow.cps.EnvActionImpl@66aa842a, 
+	hudson.plugins.git.util.BuildData@cdeedecd[
+		scmName=<null>,
+		remoteUrls=[
+			https://git.fulcrumww.com/PCC/PCC-Lighthouse.git],
+			buildsByBranchName={refs/remotes/origin/PCC_Angular_Dev=Build #243 of Revision 71b2d2da5ac5a36eb1b6322593789adee2c575a3 (refs/remotes/origin/PCC_Angular_Dev)},
+			lastBuild=Build #243 of Revision 71b2d2da5ac5a36eb1b6322593789adee2c575a3 (refs/remotes/origin/PCC_Angular_Dev)
+		], 
+		hudson.plugins.git.GitTagAction@48faf1a2, 
+		MultiSCMRevisionState{git https://git.fulcrumww.com/PCC/PCC-Lighthouse.git=hudson.scm.SCMRevisionState$None@41b9b984}, 
+		hudson.plugins.sonar.action.SonarMarkerAction@34f29962, 
+		hudson.plugins.sonar.action.SonarAnalysisAction@4c655271, 
+		hudson.plugins.sonar.action.SonarCacheAction@5bad58a3
+	]>
+]	
+--------------------------------Feature branch----------------------------------------------
+org.jenkinsci.plugins.workflow.job.WorkflowRun@4267173f 
+execution=CpsFlowExecution[Owner[pcc_angular_pipeline/234:pcc_angular_pipeline #234]] 
+executionPromise=com.google.common.util.concurrent.SettableFuture@2f891a22 
+runMixIn=org.jenkinsci.plugins.workflow.job.WorkflowRun$1@394f1d43 
+listener=null 
+allowTerm=false 
+allowKill=false 
+executionLoaded=true 
+culprits=null 
+completed=true 
+logCopyGuard=java.lang.Object@6fc0c87c 
+checkouts=[] 
+changeSets=null 
+firstTime=false 
+project=org.jenkinsci.plugins.workflow.job.WorkflowJob@637290e3[pcc_angular_pipeline] 
+number=234 
+queueId=3901 
+previousBuild=null 
+nextBuild=null 
+previousBuildInProgress=pcc_angular_pipeline #234 
+id=null timestamp=1559130645107 
+startTime=1559130645111 
+result=SUCCESS 
+description=Started by GitLab push by Prasad Prakash Shinde 
+displayName=null 
+state=null 
+duration=1169 
+charset=UTF-8 
+keepLog=false 
+runner=null 
+artifactManager=null 
+actions=[
+		hudson.model.CauseAction@1564e454, 
+		hudson.triggers.SCMTrigger$BuildAction@72dba4d0, 
+		hudson.plugins.git.RevisionParameterAction@333f0acd[commit=remotes/origin/prasad-firstrelease-bugfixes], 
+		hudson.model.ParametersAction@5a55a7fe, 
+		org.jenkinsci.plugins.workflow.libs.LibrariesAction@68a1bea4, 
+		org.jenkinsci.plugins.workflow.cps.EnvActionImpl@47f36a44
+]
