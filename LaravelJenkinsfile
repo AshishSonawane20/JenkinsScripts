@@ -95,7 +95,7 @@ def checkoutGitlab(branch){
 					submoduleCfg: [],
 					userRemoteConfigs: [[
 						credentialsId: 'devops_credential',
-						url: 'https://git.fulcrumww.com/PCCLightHouse/PCC-LightHouse_1.git'
+						url: '<git_url>'
 					]]
 				]
 			)

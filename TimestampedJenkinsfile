@@ -52,6 +52,6 @@ checkout(
 	submoduleCfg: [],
 	userRemoteConfigs: [[
 		credentialsId: 'f79664c9-1ff5-4c6e-bab8-b9a6eab06ab9',
-		url: 'https://git.fulcrumww.com/automation_scripts/sample_war_projects.git'
+		url: '<git_url>'
 	]])
 }

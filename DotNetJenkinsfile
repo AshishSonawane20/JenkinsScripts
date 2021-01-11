@@ -14,7 +14,7 @@ String uatNodeLabel = "pns-dev-server-node"
 String projectName = "PNS-pipeline"
 
 @Field
-String repositoryUrl = "https://git.fulcrumww.com/PnS_Grp/PnS.git"
+String repositoryUrl = "<git_url>"
 
 @Field
 String repositoryCredId = "6521d470-22e4-4afe-b3fc-a2dff9b8c7ba"

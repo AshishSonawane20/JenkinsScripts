@@ -3,7 +3,7 @@ import groovy.transform.Field
 import java.text.SimpleDateFormat
 
 @Field
-String repositoryUrl = "https://git.fulcrumww.com/IFL/IFL_RAPID_Mobile.git"
+String repositoryUrl = "<git_repo>"
 @Field
 String gitlabCredentialId = "6521d470-22e4-4afe-b3fc-a2dff9b8c7ba"
 @Field
@@ -223,7 +223,7 @@ def publish(){
 			  -F "notes_type=0" \
 			  -F "ipa=@${workspace}/${projectName}/${apkName}${apkVersion}.apk" \
 			  -H "X-HockeyAppToken: ${authorToken}" \
-			  https://rink.hockeyapp.net/api/2/apps/185f4782646a4db493fd4d93b94e5c4c/app_versions/upload			 
+			  <hockey_app_url>
 		"""
 	}
 }

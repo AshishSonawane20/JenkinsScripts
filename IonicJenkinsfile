@@ -2,7 +2,7 @@
 import groovy.transform.Field
 
 @Field
-String repositoryUrl = "https://git.fulcrumww.com/Lafarge_Grp/Lafarge_PinoyBuilder.git"
+String repositoryUrl = "<git_url>"
 @Field
 String gitlabCredentialId = "6521d470-22e4-4afe-b3fc-a2dff9b8c7ba"
 @Field

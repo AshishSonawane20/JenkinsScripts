@@ -41,12 +41,12 @@ actions=[
 	hudson.plugins.git.util.BuildData@cdeedecd[
 		scmName=<null>,
 		remoteUrls=[
-			https://git.fulcrumww.com/PCC/PCC-Lighthouse.git],
+			<git_url>],
 			buildsByBranchName={refs/remotes/origin/PCC_Angular_Dev=Build #243 of Revision 71b2d2da5ac5a36eb1b6322593789adee2c575a3 (refs/remotes/origin/PCC_Angular_Dev)},
 			lastBuild=Build #243 of Revision 71b2d2da5ac5a36eb1b6322593789adee2c575a3 (refs/remotes/origin/PCC_Angular_Dev)
 		], 
 		hudson.plugins.git.GitTagAction@48faf1a2, 
-		MultiSCMRevisionState{git https://git.fulcrumww.com/PCC/PCC-Lighthouse.git=hudson.scm.SCMRevisionState$None@41b9b984}, 
+		MultiSCMRevisionState{git <git_url>=hudson.scm.SCMRevisionState$None@41b9b984}, 
 		hudson.plugins.sonar.action.SonarMarkerAction@34f29962, 
 		hudson.plugins.sonar.action.SonarAnalysisAction@4c655271, 
 		hudson.plugins.sonar.action.SonarCacheAction@5bad58a3

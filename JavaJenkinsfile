@@ -117,7 +117,7 @@ def checkoutGitlab(branch){
 					submoduleCfg: [],
 					userRemoteConfigs: [[
 						credentialsId: '6521d470-22e4-4afe-b3fc-a2dff9b8c7ba',
-						url: 'https://git.fulcrumww.com/IFL_Grp/IFL_GCL_WEB.git'
+						url: '<git_url>'
 					]]
 				]
 			)

@@ -10,7 +10,7 @@ String developmentNodeLabel = "baxa-pos-node"
 @Field
 String uatNodeLabel = "baxa-pos-node"
 @Field
-String repositoryUrl = "https://git.fulcrumww.com/IFL_Grp/IFL_GAP_WEB.git"
+String repositoryUrl = "<git_url>"
 
 @Field
 String repositoryCredId = "baxa_lankesh_credential"
