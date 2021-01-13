@@ -24,11 +24,8 @@ String apkVersion = ""
 String apkVersionDesc = ""
 
 def hockeyAppTokenMap = [
-	"ashish.sonwane@fulcrumdigital.com": "0f927a03f12b46258fb2ea45e8e8d100",
-	"sandip.jadhav@fulcrumdigital.com": "c2f340ea4ff44769a5ec5f9768ed8b44",
-	"kedar.labade@fulcrumdigital.com": "e2e2370affcf40bcb1b151c8895fccf8",
-	"amruta.bidkar@fulcrumdigital.com":"7cb75bc75dd446ea8b5184e54f232a70",
-	"default": "c2f340ea4ff44769a5ec5f9768ed8b44"
+	"<email>": "<token>",
+	"<email2>": "<token2>"
 ]
 @Field
 String authorToken = ""
